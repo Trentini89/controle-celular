@@ -271,7 +271,8 @@ function botoesPessoas(){const todos=pessoasTodas().map(p=>p.nome);let vis=lsGet
   if(!lsGet("pessoasConhecidas",null))lsSet("pessoasConhecidas",todos.slice());
   return todos.filter(n=>vis.includes(n))}
 function pessoasNovas(){const k=lsGet("pessoasConhecidas",null);if(!k)return [];return pessoasTodas().map(p=>p.nome).filter(n=>!k.includes(n))}
-function cfg(){const p=S.plan;return {pessoas:pessoasTodas(),meios:(p&&p.meios&&p.meios.length)?p.meios:DEFAULTS.meios,categorias:(p&&p.categorias&&p.categorias.length)?p.categorias:DEFAULTS.categorias,lojas:(p&&p.lojas)||DEFAULTS.lojas}}
+function meiosTodos(){const p=S.plan;const base=((p&&p.meios&&p.meios.length)?p.meios:DEFAULTS.meios).slice();const ex=lsGet("meiosExtras",[]);ex.forEach(m=>{if(!base.some(b=>b.chave===m.chave))base.push({...m,extra:true})});return base}
+function cfg(){const p=S.plan;return {pessoas:pessoasTodas(),meios:meiosTodos(),categorias:(p&&p.categorias&&p.categorias.length)?p.categorias:DEFAULTS.categorias,lojas:(p&&p.lojas)||DEFAULTS.lojas}}
 const nomes = ()=>cfg().pessoas.map(p=>p.nome);
 function meioByKey(k){if(k==="manual")return MANUAL;return cfg().meios.find(m=>m.chave===k)||null}
 function itemsArr(kind){return Object.values(S.items).filter(i=>!i.excluido&&(!kind||i.kind===kind))}
@@ -437,8 +438,12 @@ function render(){
 }
 
 function viewSetup(v){
-  v.innerHTML='<div class="stack"><div class="card stack"><h2 style="font-size:24px">Primeiro, os dados da planilha</h2><p style="margin:0">Escolha o arquivo <b>resumo-celular.json</b>, que fica na pasta <b>Celular</b> do projeto, no OneDrive. Ele traz as pessoas, os cartões, as lojas e quem deve a quem.</p><p class="muted small" style="margin:0">Os dados ficam guardados só neste celular. Nada vai para a internet.</p><label class="btn primary" for="setup-file">Escolher resumo-celular.json<input type="file" id="setup-file" accept=".json,application/json" hidden></label></div><div class="card small muted">No celular, toque em Escolher e procure no OneDrive: Projeto Controle Financeiro → Celular. Depois de cada importação de faturas, a planilha gera um resumo novo, que você carrega em <a href="#config" data-go="config">Configurações</a> (ícone de engrenagem no alto).</div></div>';
+  v.innerHTML='<div class="stack"><div class="card stack"><h2 style="font-size:24px">Vamos começar</h2><p style="margin:0">Se você tem a planilha do Controle, escolha o arquivo <b>resumo-celular.json</b> (pasta <b>Celular</b> do projeto, no OneDrive). Ele já traz pessoas, cartões, lojas e quem deve a quem.</p><label class="btn primary" for="setup-file">Escolher resumo-celular.json<input type="file" id="setup-file" accept=".json,application/json" hidden></label></div>'
+   +'<div class="card stack"><h3 style="font-size:19px">Começar sem o arquivo</h3><p class="muted small" style="margin:0">Só para lançar. Depois você cadastra cartões e pessoas em Configurações (engrenagem no alto).</p><div class="field"><label class="label" for="setup-nome">Seu nome</label><input class="text" id="setup-nome" placeholder="Ex.: Carla" maxlength="40"></div><button type="button" class="btn" data-act="setup-go">Começar</button></div>'
+   +'<div class="muted small" style="text-align:center">Os dados ficam guardados só neste celular. Nada vai para a internet.</div></div>';
   $("#setup-file").addEventListener("change",e=>{const fl=e.target.files&&e.target.files[0];if(fl)importarResumo(fl);e.target.value=""});
+  const go1=()=>{const n=capital($("#setup-nome").value);if(n.length<2){toast("Digite seu nome.");$("#setup-nome").focus();return}addPessoa(n);S.eu=n;lsSet("eu",n);S.form=null;S.route="config";render();toast("Agora cadastre seus cartões")};
+  v.querySelector('[data-act="setup-go"]').onclick=go1;$("#setup-nome").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();go1()}});
 }
 
 /* ---------- shared UI pieces ---------- */
@@ -831,6 +836,9 @@ function viewPlanilha(v){
   html+='<div style="display:flex;gap:8px"><input class="text" id="nova-pessoa" placeholder="Nova pessoa (ex.: Carla)" maxlength="40"><button type="button" class="btn" data-act="add-pessoa">Adicionar</button></div>';
   const extras=todos.filter(p=>p.extra);if(extras.length)html+='<div class="muted small">Pessoas criadas no celular vão no arquivo para a planilha, que pergunta antes de pôr no cadastro. '+extras.map(p=>'<button type="button" class="chip" style="min-height:30px;padding:3px 10px;margin:2px" data-rmpessoa="'+esc(p.nome)+'">Remover '+esc(p.nome)+'</button>').join("")+'</div>';
   html+='</div>';}
+  {const ms=meiosTodos();
+  html+='<div class="section-title">Cartões e débito</div><div class="card stack">'+(ms.length?'<div class="list">'+ms.map(m=>'<div class="item" style="cursor:default"><span class="ico">'+bankDot(m)+'</span><span style="min-width:0"><div class="t">'+esc(m.nome)+'</div><div class="s">'+esc(m.tipo==="Conta"?"Débito / PIX":"Crédito")+' · titular '+esc(m.titular)+(m.extra?" · criado no celular":" · da planilha")+'</div></span>'+(m.extra?'<button type="button" class="chip" data-rmmeio="'+esc(m.chave)+'">Remover</button>':'<span></span>')+'</div>').join("")+'</div>':'<div class="muted small">Nenhum cartão ainda. Sem cartão, os lançamentos entram como "Dinheiro ou outra conta".</div>');
+  html+='<div class="field"><span class="label">Adicionar</span><div class="row2"><input class="text" id="nm-banco" placeholder="Banco (ex.: Nubank)" maxlength="30"><select class="text" id="nm-tipo"><option value="Cartão">Crédito</option><option value="Conta">Débito / PIX</option></select></div><select class="text" id="nm-tit">'+nomes().map(n=>'<option'+(n===S.eu?" selected":"")+'>'+esc(n)+'</option>').join("")+'</select><button type="button" class="btn" data-act="add-meio">Adicionar cartão</button></div></div>';}
   html+='<div class="section-title">Enviar para a planilha</div><div class="card stack"><div><b>'+(pe?pe+(pe===1?" alteração":" alterações")+" desde o último envio":"Tudo enviado")+'</b><div class="muted small">'+(S.app.ultimoEnvio?"Último envio: "+esc(dtBR(S.app.ultimoEnvio))+(S.app.ultimoEnvioPor?" por "+esc(S.app.ultimoEnvioPor):""):"Nenhum envio ainda")+' · '+total+' itens no total</div></div>';
   html+='<button type="button" class="btn primary" data-act="csv">'+(S.dl?"Baixar arquivo para a planilha":"Salvar arquivo para a planilha")+'</button><button type="button" class="btn" data-act="csv-txt" style="min-height:40px;font-size:14px">Mostrar o arquivo para copiar</button>';
   html+='<div class="muted small">O arquivo <span class="mono">'+esc(nomeCSV())+'</span> leva tudo o que foi lançado '+(S.mode==="compartilhado"?"em todos os aparelhos":"neste aparelho")+'. Salve na pasta <b>Celular</b> do projeto (ou deixe em Downloads) e clique em <b>Importar faturas e extratos</b> na planilha.</div><div id="csv-box"></div></div>';
@@ -846,6 +854,10 @@ function viewPlanilha(v){
   html+='</div>';v.innerHTML=html;
   bindWho(v);
   v.querySelectorAll("[data-botao]").forEach(b=>b.onclick=()=>{const n=b.dataset.botao;const vis=lsGet("botoesPessoas",[]);const i=vis.indexOf(n);if(i>=0)vis.splice(i,1);else vis.push(n);lsSet("botoesPessoas",vis);const k=lsGet("pessoasConhecidas",[]);if(!k.includes(n)){k.push(n);lsSet("pessoasConhecidas",k)}render()});
+  v.querySelector('[data-act="add-meio"]').onclick=()=>{const banco=capital($("#nm-banco").value);const tipo=$("#nm-tipo").value;const tit=$("#nm-tit").value;if(banco.length<2){toast("Digite o banco.");$("#nm-banco").focus();return}if(!tit){toast("Cadastre uma pessoa primeiro.");return}
+    const chave=(tipo==="Conta"?"conta:":"cartao:")+banco.normalize("NFD").replace(/[^A-Za-z0-9]/g,"")+":"+tit;if(meiosTodos().some(m=>m.chave===chave)){toast("Esse já existe");return}
+    const ex=lsGet("meiosExtras",[]);ex.push({chave,tipo,banco,titular:tit,final:tipo==="Conta"?"conta":"",nome:(tipo==="Conta"?"Débito ":"")+banco+" "+tit,rateio:""});lsSet("meiosExtras",ex);toast("Cartão adicionado");render()};
+  v.querySelectorAll("[data-rmmeio]").forEach(b=>b.onclick=()=>{lsSet("meiosExtras",lsGet("meiosExtras",[]).filter(m=>m.chave!==b.dataset.rmmeio));toast("Removido");render()});
   v.querySelector('[data-act="add-pessoa"]').onclick=()=>{const x=$("#nova-pessoa");if(addPessoa(x.value))render()};
   $("#nova-pessoa").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();if(addPessoa(e.target.value))render()}});
   v.querySelectorAll("[data-rmpessoa]").forEach(b=>b.onclick=()=>{const n=b.dataset.rmpessoa;lsSet("pessoasExtras",lsGet("pessoasExtras",[]).filter(x=>x!==n));lsSet("botoesPessoas",lsGet("botoesPessoas",[]).filter(x=>x!==n));toast(n+" removida");render()});
