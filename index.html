@@ -105,6 +105,11 @@ input.text:focus,select.text:focus,textarea.text:focus{border-color:var(--accent
 .chip{flex:none;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:8px 13px;font-size:14px;font-weight:600;white-space:nowrap;min-height:38px}
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .chip .sub{font-weight:500;opacity:.75;font-size:12.5px}
+.tripbox{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:10px 10px 10px 12px}
+.tripbox.on{border-color:var(--accent)}
+.tripbox .t{font-weight:700;font-size:14.5px}
+.tripbox .s{font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
+.tripbox .ico{flex:none}
 .chip.dashed{border-style:dashed;color:var(--ink-2)}
 .bank{width:10px;height:10px;border-radius:3px;flex:none;background:var(--ink-2)}
 .bank.C6{background:var(--c6)} .bank.Santander{background:var(--santander)} .bank.Nubank{background:var(--nubank)} .bank.conta{background:var(--conta);border-radius:50%} .bank.manual{background:var(--manual);border-radius:50%}
@@ -487,7 +492,8 @@ function historicoSugestoes(q){
 function viewLancar(v){
   if(!S.form)S.form=novaCompra();const f=S.form;const m=meioByKey(f.meio)||MANUAL;const ms=cfg().meios;
   const usage=lsGet("meioUso",{});const ordered=[...ms].sort((a,b)=>(usage[b.chave]||0)-(usage[a.chave]||0));
-  const vs=viagensAtivas(f.data,f.meio);
+  const vs=viagensAtivas(f.data,null);
+  if(f.rateioModo==="viagem"&&!vs.some(x=>x.id===f.viagemId))f.rateioModo="padrao";
   const titular=f.meio==="manual"?f.pagoPor:m.titular;
   const padrao=rateioEfetivo({...draftItem({...f,rateioModo:"padrao"}),rateio:""});
   let html='<form id="fc" class="stack" autocomplete="off" novalidate>';
@@ -503,14 +509,17 @@ function viewLancar(v){
   html+='<div class="field"><span class="label">Parcelas</span><div class="chips scroll" role="group" aria-label="Parcelas">';
   for(let n=1;n<=12;n++)html+='<button type="button" class="chip" data-parc="'+n+'" aria-pressed="'+(f.parcelas===n)+'">'+(n===1?"À vista":n+"x")+'</button>';
   html+='<input type="number" class="text" id="f-parc" min="1" max="360" inputmode="numeric" placeholder="+" value="'+(f.parcelas>12?f.parcelas:"")+'" style="width:76px;flex:none;padding:7px 10px;font-size:15px" aria-label="Outro número de parcelas"></div></div>';
+  vs.forEach(x=>{const dentro=f.rateioModo==="viagem"&&f.viagemId===x.id;const cat=categoriaDe(draftItem(f));const auto=!dentro&&(x.categorias||[]).includes(cat)&&(!x.meios||!x.meios.length||x.meios.includes(f.meio));
+    html+='<div class="tripbox'+(dentro?' on':'')+'"><span class="ico via">'+icoCar+'</span><div class="grow" style="min-width:0"><div class="t">Viagem '+esc(x.nome)+'</div><div class="s">'+(dentro?'Dividido entre '+esc((x.pessoas||[]).join(", ")):auto?esc(cat)+' já entra na viagem sozinho':esc(periodoTxt(x))+' · '+(x.pessoas||[]).length+' pessoas')+'</div></div>'+(auto?'':'<button type="button" class="chip" data-rviagem="'+esc(x.id)+'" aria-pressed="'+dentro+'">'+(dentro?'Na viagem':'Incluir na viagem')+'</button>')+'</div>'});
+  if(f.rateioModo==="viagem"){html+='<div class="field"><span class="label">Dividir entre</span><div class="muted small">Pela viagem. Para dividir de outro jeito, toque em "Na viagem" para tirar.</div>'}else{
   html+='<div class="field"><span class="label">Dividir entre</span><div class="chips">';
   html+='<button type="button" class="chip" data-rmodo="padrao" aria-pressed="'+(f.rateioModo==="padrao")+'">Padrão <span class="sub">'+esc(padrao.txt==="-"?"só "+(titular||"titular"):padrao.txt)+'</span></button>';
-  vs.forEach(x=>{html+='<button type="button" class="chip" data-rviagem="'+esc(x.id)+'" aria-pressed="'+(f.rateioModo==="viagem"&&f.viagemId===x.id)+'">Viagem '+esc(x.nome)+' <span class="sub">'+(x.pessoas||[]).length+' pessoas</span></button>'});
   html+='<button type="button" class="chip" data-rmodo="titular" aria-pressed="'+(f.rateioModo==="titular")+'">Só '+esc(titular||"titular")+'</button>';
   html+='<button type="button" class="chip dashed" data-rmodo="texto" aria-pressed="'+(f.rateioModo==="texto")+'">Valores…</button></div>';
   {const selN=n=>(f.rateioModo==="pessoas"&&f.pessoas.includes(n))||(f.rateioModo==="texto"&&nomesDoTexto(f.rateioTexto).includes(n));const vis=botoesPessoas();const show=S.verTodas?nomes():nomes().filter(n=>vis.includes(n)||selN(n));const esc2=nomes().length-show.length;
   html+='<div class="chips" style="margin-top:2px">'+show.map(n=>'<button type="button" class="chip" data-rpessoa="'+esc(n)+'" aria-pressed="'+selN(n)+'">'+esc(n)+'</button>').join("")+(esc2>0?'<button type="button" class="chip dashed" data-vertodas="1">+ '+esc2+'</button>':"")+'</div>';}
   if(f.rateioModo==="texto")html+='<input class="text" id="f-rtexto" placeholder="Ex.: Ana 100; Bruno; Carla" value="'+esc(f.rateioTexto)+'" style="margin-top:4px"><div class="muted small">Nome sozinho = parte igual · nome com valor = valor fixo · igual à coluna Rateio da planilha.</div>';
+  }
   html+='<div class="preview" id="f-prev"></div></div>';
   html+='<details class="more" id="f-more"'+(S.moreOpen||f.obs||f.categoria||f.data!==today()||f.aproximado?" open":"")+'><summary>Data, categoria e observação</summary><div class="stack">';
   html+='<div class="field"><span class="label">Data da compra</span>'+dateChips("f-data",f.data)+'</div>';
@@ -529,15 +538,15 @@ function viewLancar(v){
   const parc=$("#f-parc");parc.addEventListener("change",()=>{const n=Math.min(360,Math.max(1,parseInt(parc.value||"1",10)||1));f.parcelas=n;if(n===1)f.valorEh="total";render()});
   const rt=$("#f-rtexto");if(rt)rt.addEventListener("input",()=>{f.rateioTexto=rt.value;const ns=nomesDoTexto(rt.value);v.querySelectorAll("[data-rpessoa]").forEach(b=>b.setAttribute("aria-pressed",ns.includes(b.dataset.rpessoa)));updLancar()});
   $("#f-data").addEventListener("change",e=>{if(e.target.value){f.data=e.target.value;render()}});
-  $("#f-cat").addEventListener("change",e=>{f.categoria=e.target.value;updLancar()});
+  $("#f-cat").addEventListener("change",e=>{f.categoria=e.target.value;S.moreOpen=true;render()});
   $("#f-obs").addEventListener("input",e=>{f.obs=e.target.value});
   $("#f-aprox").addEventListener("change",e=>{f.aproximado=e.target.checked});
-  v.querySelectorAll("[data-meio]").forEach(b=>b.onclick=()=>{f.meio=b.dataset.meio;if(f.rateioModo==="viagem"&&!viagensAtivas(f.data,f.meio).some(x=>x.id===f.viagemId))f.rateioModo="padrao";render()});
+  v.querySelectorAll("[data-meio]").forEach(b=>b.onclick=()=>{f.meio=b.dataset.meio;render()});
   v.querySelectorAll("[data-pagopor]").forEach(b=>b.onclick=()=>{f.pagoPor=b.dataset.pagopor;render()});
   v.querySelectorAll("[data-parc]").forEach(b=>b.onclick=()=>{f.parcelas=+b.dataset.parc;if(f.parcelas===1)f.valorEh="total";render()});
   v.querySelectorAll("[data-valoreh]").forEach(b=>b.onclick=()=>{f.valorEh=b.dataset.valoreh;render()});
   v.querySelectorAll("[data-rmodo]").forEach(b=>b.onclick=()=>{const antes=f.rateioModo;f.rateioModo=b.dataset.rmodo;if(f.rateioModo==="texto"&&antes!=="texto"){f.rateioTexto=antes==="pessoas"&&f.pessoas.length?f.pessoas.join("; "):antes==="viagem"&&S.items[f.viagemId]?S.items[f.viagemId].rateio:(f.rateioTexto||(padrao.txt==="-"?(titular||""):padrao.txt))}render();if(f.rateioModo==="texto"){const x=$("#f-rtexto");if(x)x.focus()}});
-  v.querySelectorAll("[data-rviagem]").forEach(b=>b.onclick=()=>{f.rateioModo="viagem";f.viagemId=b.dataset.rviagem;render()});
+  v.querySelectorAll("[data-rviagem]").forEach(b=>b.onclick=()=>{if(f.rateioModo==="viagem"&&f.viagemId===b.dataset.rviagem){f.rateioModo="padrao"}else{f.rateioModo="viagem";f.viagemId=b.dataset.rviagem}render()});
   v.querySelectorAll("[data-rpessoa]").forEach(b=>b.onclick=()=>{const n=b.dataset.rpessoa;if(f.rateioModo==="texto"){f.rateioTexto=alternaNomeNoTexto(f.rateioTexto,n);render();return}if(f.rateioModo!=="pessoas"){f.rateioModo="pessoas";f.pessoas=[]}const i=f.pessoas.indexOf(n);if(i>=0)f.pessoas.splice(i,1);else f.pessoas.push(n);if(!f.pessoas.length)f.rateioModo="padrao";render()});
   v.querySelectorAll("[data-date]").forEach(b=>b.onclick=()=>{f.data=b.dataset.date;render()});
   bindWho(v);bindRecentes(v);
@@ -580,7 +589,7 @@ function itemRow(it){
   const st=statusItem(it);
   if(it.kind==="compra"){const m=meioByKey(it.meio)||MANUAL;return '<button type="button" class="item" data-edit="'+esc(it.id)+'"><span class="ico">'+icoCard+'</span><span style="min-width:0"><div class="t">'+esc(it.descricao||it.loja||"(sem descrição)")+'</div><div class="s">'+bankDot(m)+esc(m.nome)+(it.parcelas>1?" · "+it.parcelas+"x":"")+' · '+dm(it.data)+(rateioResumo(it)?' <span class="pill rat" title="Rateio">÷ '+esc(rateioResumo(it))+'</span>':"")+' <span class="pill '+st.cls+'">'+esc(st.txt)+'</span></div></span><span class="v">'+brl(it.valor)+'</span></button>'}
   if(it.kind==="pagamento")return '<button type="button" class="item" data-edit="'+esc(it.id)+'"><span class="ico pag">'+icoPix+'</span><span style="min-width:0"><div class="t">'+esc(it.pagador)+' → '+esc(it.recebedor)+'</div><div class="s">'+dm(it.data)+(it.obs?" · "+esc(it.obs):"")+' <span class="pill '+st.cls+'">'+esc(st.txt)+'</span></div></span><span class="v">'+brl(it.valor)+'</span></button>';
-  return '<button type="button" class="item" data-edit="'+esc(it.id)+'"><span class="ico via">'+icoCar+'</span><span style="min-width:0"><div class="t">Viagem '+esc(it.nome)+'</div><div class="s">'+esc(periodoTxt(it))+' <span class="pill '+st.cls+'">'+esc(st.txt)+'</span></div></span><span class="v small muted">'+(it.pessoas||[]).length+' pessoas</span></button>';
+  return '<button type="button" class="item" data-edit="'+esc(it.id)+'"><span class="ico via">'+icoCar+'</span><span style="min-width:0"><div class="t">Viagem '+esc(it.nome)+'</div><div class="s">'+esc(periodoTxt(it))+(()=>{const n=itemsArr("compra").filter(c=>c.viagem===it.id).length;return n?" · "+n+(n>1?" incluídos":" incluído"):""})()+' <span class="pill '+st.cls+'">'+esc(st.txt)+'</span></div></span><span class="v small muted">'+(it.pessoas||[]).length+' pessoas</span></button>';
 }
 function bindRecentes(v){v.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>editar(b.dataset.edit))}
 function editar(id){const it=S.items[id];if(!it)return;S.confirmDel=false;if(it.kind==="compra"){S.form=formFromItem(it);go("lancar")}else if(it.kind==="pagamento"){S.pform={id:it.id,pagador:it.pagador,recebedor:it.recebedor,valor:it.valor,data:it.data,obs:it.obs||""};go("pagamento")}else{S.vform=vformFromItem(it);go("viagens")}}
@@ -753,7 +762,7 @@ function viewViagens(v){
   html+='<button type="button" class="btn primary block" data-act="nova">Nova viagem</button>';
   if(!arr.length)html+='<div class="card empty"><h3>Nenhuma viagem</h3><p>Ex.: viagem para a serra com 4 pessoas, de 05/12 a 08/12, combustível e TAG divididos por 4.</p></div>';
   arr.forEach(x=>{const e=viagemEstado(x);const st=statusItem(x);html+='<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div style="min-width:0"><h3 style="font-size:19px">'+esc(x.nome)+'</h3><div class="muted small" style="margin-top:2px">'+esc(periodoTxt(x))+'</div></div><span class="pill '+e[0]+'">'+e[1]+'</span></div>';
-    html+='<div class="kv" style="margin-top:10px"><span class="k">Dividido entre</span><span class="v" style="font-weight:600">'+esc(x.rateio)+'</span><span class="k">O que entra</span><span class="v" style="font-weight:600">'+esc((x.categorias||[]).join(", "))+'</span><span class="k">Cartões e débito</span><span class="v" style="font-weight:600">'+esc(x.meios&&x.meios.length?x.meios.map(k=>(meioByKey(k)||{nome:k}).nome).join(", "):"Todos")+'</span><span class="k">Planilha</span><span class="v"><span class="pill '+st.cls+'">'+esc(st.txt)+'</span>'+(st.det?'<div class="small muted" style="font-weight:500">'+esc(st.det)+'</div>':"")+'</span></div>';
+    html+='<div class="kv" style="margin-top:10px"><span class="k">Dividido entre</span><span class="v" style="font-weight:600">'+esc(x.rateio)+'</span><span class="k">O que entra</span><span class="v" style="font-weight:600">'+esc((x.categorias||[]).join(", "))+'</span>'+(()=>{const cs=itemsArr("compra").filter(c=>c.viagem===x.id);return cs.length?'<span class="k">Incluídos à mão</span><span class="v" style="font-weight:600">'+cs.length+(cs.length>1?" lançamentos · ":" lançamento · ")+brl(cs.reduce((t,c)=>t+(+c.valor||0),0))+'</span>':""})()+'<span class="k">Cartões e débito</span><span class="v" style="font-weight:600">'+esc(x.meios&&x.meios.length?x.meios.map(k=>(meioByKey(k)||{nome:k}).nome).join(", "):"Todos")+'</span><span class="k">Planilha</span><span class="v"><span class="pill '+st.cls+'">'+esc(st.txt)+'</span>'+(st.det?'<div class="small muted" style="font-weight:500">'+esc(st.det)+'</div>':"")+'</span></div>';
     html+='<div class="btnrow" style="margin-top:12px"><button type="button" class="btn" data-vedit="'+esc(x.id)+'">Editar</button>'+(e[1].startsWith("Ativa")&&x.modo!=="datas"?'<button type="button" class="btn" data-vend="'+esc(x.id)+'">Encerrar hoje</button>':"")+'</div></div>'});
   html+='</div>';v.innerHTML=html;
   v.querySelector('[data-act="nova"]').onclick=()=>{S.vform=novaViagem();render();window.scrollTo(0,0)};
@@ -875,7 +884,7 @@ function gerarCSV(){
   const rows=[CSV_COLS.join(";")];
   const its=Object.values(S.items).sort((a,b)=>(a.criadoEm||"").localeCompare(b.criadoEm||""));
   for(const i of its){const r={Tipo:i.kind==="compra"?"Compra":i.kind==="pagamento"?"Pagamento":"Viagem",ID:i.id,Excluido:i.excluido?"Sim":"",CriadoEm:i.criadoEm,AlteradoEm:i.alteradoEm,Por:i.por};
-    if(i.kind==="compra")Object.assign(r,{Data:i.data,Valor:brNum(i.valor),Parcelas:i.parcelas,ValorParcela:brNum(i.valorParcela),ValorDigitado:i.valorDigitado==="parcela"?"Parcela":"Total",Meio:i.tipoMeio,Banco:i.banco,Titular:i.titular,Final:i.final,PagoPor:i.pagoPor,Descricao:i.descricao,Loja:i.loja,Rateio:i.rateio,Categoria:i.categoria,Observacao:i.obs,Aproximado:i.aproximado?"Sim":"",Viagem:i.viagem?((S.items[i.viagem]||{}).nome||""):""});
+    if(i.kind==="compra")Object.assign(r,{Data:i.data,Valor:brNum(i.valor),Parcelas:i.parcelas,ValorParcela:brNum(i.valorParcela),ValorDigitado:i.valorDigitado==="parcela"?"Parcela":"Total",Meio:i.tipoMeio,Banco:i.banco,Titular:i.titular,Final:i.final,PagoPor:i.pagoPor,Descricao:i.descricao,Loja:i.loja,Rateio:(i.viagem&&S.items[i.viagem]&&!S.items[i.viagem].excluido)?S.items[i.viagem].rateio:i.rateio,Categoria:i.categoria,Observacao:i.obs,Aproximado:i.aproximado?"Sim":"",Viagem:i.viagem?((S.items[i.viagem]||{}).nome||""):""});
     else if(i.kind==="pagamento")Object.assign(r,{Data:i.data,Valor:brNum(i.valor),Pagador:i.pagador,Recebedor:i.recebedor,Observacao:i.obs});
     else Object.assign(r,{Nome:i.nome,Rateio:i.rateio,Pessoas:(i.pessoas||[]).join("|"),Modo:i.modo==="datas"?"Datas":"Periodo",De:i.de,Ate:i.ate,Datas:(i.datas||[]).join("|"),Categorias:(i.categorias||[]).join("|"),Meios:(i.meios||[]).map(k=>{const m=meioByKey(k);return m?[m.tipo,m.banco,m.titular,m.final].join(":"):k}).join("|")});
     rows.push(CSV_COLS.map(c=>csvCell(r[c])).join(";"))}

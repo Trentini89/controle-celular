@@ -1,5 +1,5 @@
 // Funciona sem internet: guarda a página no aparelho e busca versão nova quando há conexão.
-const CACHE = "controle-v3";
+const CACHE = "controle-v4";
 const ARQUIVOS = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
