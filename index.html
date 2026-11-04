@@ -200,8 +200,8 @@ img{max-width:100%}
   <header class="top">
     <h1 id="title">Lançar</h1>
     <span class="sync" id="sync"><span class="dot"></span><span>Iniciando…</span></span>
-    <button class="iconbtn" id="btn-planilha" aria-label="Planilha e ajustes" data-go="planilha">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+    <button class="iconbtn" id="btn-planilha" aria-label="Configurações" data-go="config">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       <span class="badge-n" id="badge-envio" hidden>0</span>
     </button>
   </header>
@@ -262,9 +262,16 @@ const S = {
   items:lsGet("items",{}), outbox:lsGet("outbox",{}),
   plan:lsGet("plan",null), app:lsGet("app",{ultimoEnvio:null,ultimoEnvioPor:""}),
   mode:"iniciando", db:null, dl:null, flushing:false, loadTimer:null, remoteSeen:false,
-  form:null, pform:null, moreOpen:false, storageOk:null, vform:null, saldoSel:null, histFiltro:"todos", histBusca:"", confirmDel:false, comp:null, readState:null
+  form:null, pform:null, moreOpen:false, storageOk:null, verTodas:false, vform:null, saldoSel:null, histFiltro:"todos", histBusca:"", confirmDel:false, comp:null, readState:null
 };
-function cfg(){const p=S.plan;return {pessoas:(p&&p.pessoas&&p.pessoas.length)?p.pessoas:DEFAULTS.pessoas,meios:(p&&p.meios&&p.meios.length)?p.meios:DEFAULTS.meios,categorias:(p&&p.categorias&&p.categorias.length)?p.categorias:DEFAULTS.categorias,lojas:(p&&p.lojas)||DEFAULTS.lojas}}
+function pessoasTodas(){const p=S.plan;const base=((p&&p.pessoas&&p.pessoas.length)?p.pessoas:DEFAULTS.pessoas).slice();const ex=lsGet("pessoasExtras",[]);ex.forEach(n=>{if(!base.some(b=>norm(b.nome)===norm(n)))base.push({nome:n,nomesBancos:[],extra:true})});return base}
+/* botões de pessoas: escolhidos em Configurações; nome que ainda não foi visto entra como "novo" e só vira botão quando marcado */
+function botoesPessoas(){const todos=pessoasTodas().map(p=>p.nome);let vis=lsGet("botoesPessoas",null);
+  if(!vis){if(!todos.length)return [];vis=todos.slice();lsSet("botoesPessoas",vis);lsSet("pessoasConhecidas",todos.slice());return vis}
+  if(!lsGet("pessoasConhecidas",null))lsSet("pessoasConhecidas",todos.slice());
+  return todos.filter(n=>vis.includes(n))}
+function pessoasNovas(){const k=lsGet("pessoasConhecidas",null);if(!k)return [];return pessoasTodas().map(p=>p.nome).filter(n=>!k.includes(n))}
+function cfg(){const p=S.plan;return {pessoas:pessoasTodas(),meios:(p&&p.meios&&p.meios.length)?p.meios:DEFAULTS.meios,categorias:(p&&p.categorias&&p.categorias.length)?p.categorias:DEFAULTS.categorias,lojas:(p&&p.lojas)||DEFAULTS.lojas}}
 const nomes = ()=>cfg().pessoas.map(p=>p.nome);
 function meioByKey(k){if(k==="manual")return MANUAL;return cfg().meios.find(m=>m.chave===k)||null}
 function itemsArr(kind){return Object.values(S.items).filter(i=>!i.excluido&&(!kind||i.kind===kind))}
@@ -298,6 +305,7 @@ function nomesDoTexto(t){const sep=String(t||"").includes(";")?";":",";return St
 function alternaNomeNoTexto(t,nome){t=String(t||"").trim();const toks=t?t.split(t.includes(";")?";":",").map(x=>x.trim()).filter(Boolean):[];
   const has=toks.filter(tk=>{const m=tk.match(/^(.+?)\s+(-?[\d.,]+)$/);return resolveNome(m?m[1]:tk)===nome});
   if(has.length)return toks.filter(tk=>!has.includes(tk)).join("; ");return toks.concat([nome]).join("; ")}
+function erroRateioHtml(erro){const m=/^nome desconhecido: (.+)$/.exec(erro);const n=m?m[1].trim():"";return esc("Rateio: "+erro)+(n.length>=2&&!/\d/.test(n)?' <button type="button" class="chip" style="margin-left:6px;min-height:30px;padding:4px 10px" data-addpessoa="'+esc(n)+'">Adicionar '+esc(capital(n))+'</button>':"")}
 function partsText(r){if(!r||!r.ok)return "";if(r.semValor)return r.parts.map(p=>p.nome).join(" · ")+(r.fixos?"":" · partes iguais");return r.parts.map(p=>p.nome+" "+fmt(p.c)).join(" · ")}
 function viagensAtivas(data,meioKey){return itemsArr("viagem").filter(v=>{const okData=v.modo==="datas"?(v.datas||[]).includes(data):(data>=v.de&&(!v.ate||data<=v.ate));const okMeio=meioKey==null||!v.meios||!v.meios.length||v.meios.includes(meioKey);return okData&&okMeio})}
 function lojaByNome(n){const k=norm(n);if(!k)return null;return cfg().lojas.find(l=>norm(l.nome)===k)||null}
@@ -357,11 +365,11 @@ function renderSync(){
   else if(S.mode==="leitura"){cls="warn";txt="Só leitura"}
   else {cls="";txt="Só neste aparelho"}
   el.innerHTML='<span class="dot '+cls+'"></span><span>'+esc(txt)+'</span>';
-  const b=$("#badge-envio");const pe=pendentesEnvio();b.hidden=!pe;b.textContent=pe>99?"99+":pe;
+  const b=$("#badge-envio");const pe=pendentesEnvio()+pessoasNovas().length;b.hidden=!pe;b.textContent=pe>99?"99+":pe;
 }
 async function initCaps(){
   const use=window.claude&&typeof window.claude.use==="function"?n=>window.claude.use(n).catch(()=>null):async()=>null;
-  use("downloads").then(d=>{S.dl=d;if(S.route==="planilha"||S.route==="saldos")render()});
+  use("downloads").then(d=>{S.dl=d;if(S.route==="config"||S.route==="saldos")render()});
   S.loadTimer=setTimeout(()=>{if(!S.remoteSeen){if(S.db)setMode("offline");}},10000);
   const db=await use("db");
   if(!db){clearTimeout(S.loadTimer);setMode("local");S.storageOk=storageFunciona();try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}render();return}
@@ -408,22 +416,28 @@ function saveItem(it,msg,undoPrev){
 }
 
 /* ---------- router ---------- */
-const TITLES={lancar:"Lançar",pagamento:"Pagamento",saldos:"Quem deve",viagens:"Viagens",historico:"Histórico",planilha:"Planilha"};
-function go(r){if(!TITLES[r])r="lancar";S.route=r;S.confirmDel=false;if(location.hash!=="#"+r){try{history.replaceState(null,"","#"+r)}catch(e){location.hash=r}}render();window.scrollTo(0,0)}
+const TITLES={lancar:"Lançar",pagamento:"Pagamento",saldos:"Quem deve",viagens:"Viagens",historico:"Histórico",config:"Configurações"};
+function go(r){if(!TITLES[r])r="lancar";S.route=r;S.confirmDel=false;S.verTodas=false;if(location.hash!=="#"+r){try{history.replaceState(null,"","#"+r)}catch(e){location.hash=r}}render();window.scrollTo(0,0)}
 window.addEventListener("hashchange",()=>{const r=location.hash.slice(1);if(r&&r!==S.route&&TITLES[r]){S.route=r;render()}});
+function capital(n){return String(n).trim().split(/\s+/).map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ")}
+function addPessoa(nome){nome=capital(nome);if(!nome||nome.length<2)return false;if(pessoasTodas().some(p=>norm(p.nome)===norm(nome))){toast(nome+" já existe");return false}
+  const ex=lsGet("pessoasExtras",[]);ex.push(nome);lsSet("pessoasExtras",ex);const vis=lsGet("botoesPessoas",[]);if(!vis.includes(nome)){vis.push(nome);lsSet("botoesPessoas",vis)}const k=lsGet("pessoasConhecidas",[]);if(!k.includes(nome)){k.push(nome);lsSet("pessoasConhecidas",k)}
+  toast(nome+" adicionada às pessoas");return true}
+document.addEventListener("click",e=>{const ap=e.target.closest("[data-addpessoa]");if(ap){if(addPessoa(ap.dataset.addpessoa))render()}});
+document.addEventListener("click",e=>{const vt=e.target.closest("[data-vertodas]");if(vt){S.verTodas=true;render()}});
 document.addEventListener("click",e=>{const g=e.target.closest("[data-go]");if(g){e.preventDefault();if(g.dataset.go==="lancar"&&S.route==="lancar"&&S.form&&S.form.id){S.form=null}go(g.dataset.go)}});
 function render(){
   $("#title").textContent=(S.route==="lancar"&&S.form&&S.form.id)?"Editar compra":(S.route==="pagamento"&&S.pform&&S.pform.id)?"Editar pagamento":TITLES[S.route];
   $$(".tab").forEach(t=>t.setAttribute("aria-current",t.dataset.go===S.route?"page":"false"));
-  $("#btn-planilha").setAttribute("aria-current",S.route==="planilha"?"page":"false");
+  $("#btn-planilha").setAttribute("aria-current",S.route==="config"?"page":"false");
   const v=$("#view");
   if(!cfg().pessoas.length&&S.mode!=="iniciando"&&S.route!=="planilha"){viewSetup(v);renderSync();return}
-  ({lancar:viewLancar,pagamento:viewPagamento,saldos:viewSaldos,viagens:viewViagens,historico:viewHistorico,planilha:viewPlanilha})[S.route](v);
+  ({lancar:viewLancar,pagamento:viewPagamento,saldos:viewSaldos,viagens:viewViagens,historico:viewHistorico,config:viewPlanilha})[S.route](v);
   renderSync();
 }
 
 function viewSetup(v){
-  v.innerHTML='<div class="stack"><div class="card stack"><h2 style="font-size:24px">Primeiro, os dados da planilha</h2><p style="margin:0">Escolha o arquivo <b>resumo-celular.json</b>, que fica na pasta <b>Celular</b> do projeto, no OneDrive. Ele traz as pessoas, os cartões, as lojas e quem deve a quem.</p><p class="muted small" style="margin:0">Os dados ficam guardados só neste celular. Nada vai para a internet.</p><label class="btn primary" for="setup-file">Escolher resumo-celular.json<input type="file" id="setup-file" accept=".json,application/json" hidden></label></div><div class="card small muted">No celular, toque em Escolher e procure no OneDrive: Projeto Controle Financeiro → Celular. Depois de cada importação de faturas, a planilha gera um resumo novo, que você carrega em <a href="#planilha" data-go="planilha">Planilha</a>.</div></div>';
+  v.innerHTML='<div class="stack"><div class="card stack"><h2 style="font-size:24px">Primeiro, os dados da planilha</h2><p style="margin:0">Escolha o arquivo <b>resumo-celular.json</b>, que fica na pasta <b>Celular</b> do projeto, no OneDrive. Ele traz as pessoas, os cartões, as lojas e quem deve a quem.</p><p class="muted small" style="margin:0">Os dados ficam guardados só neste celular. Nada vai para a internet.</p><label class="btn primary" for="setup-file">Escolher resumo-celular.json<input type="file" id="setup-file" accept=".json,application/json" hidden></label></div><div class="card small muted">No celular, toque em Escolher e procure no OneDrive: Projeto Controle Financeiro → Celular. Depois de cada importação de faturas, a planilha gera um resumo novo, que você carrega em <a href="#config" data-go="config">Configurações</a> (ícone de engrenagem no alto).</div></div>';
   $("#setup-file").addEventListener("change",e=>{const fl=e.target.files&&e.target.files[0];if(fl)importarResumo(fl);e.target.value=""});
 }
 
@@ -441,7 +455,8 @@ function bindMoney(id,get,set,after){const el=$("#"+id);if(!el)return;
   el.addEventListener("paste",e=>{const t=(e.clipboardData&&e.clipboardData.getData("text"))||"";const c=parseMoneyText(t);if(!isNaN(c)){e.preventDefault();show(c)}})}
 function dateChips(id,val){const t=today();const opts=[[t,"Hoje"],[addDays(t,-1),"Ontem"],[addDays(t,-2),"Anteontem"]];const isOther=!opts.some(o=>o[0]===val);
   return '<div class="chips scroll" role="group" aria-label="Data">'+opts.map(o=>'<button type="button" class="chip" data-date="'+o[0]+'" aria-pressed="'+(o[0]===val)+'">'+o[1]+' <span class="sub">'+dm(o[0])+'</span></button>').join("")+'<input type="date" class="text" id="'+id+'" value="'+esc(val)+'" style="width:auto;flex:none;padding:7px 10px;font-size:15px'+(isOther?";border-color:var(--accent)":"")+'" aria-label="Escolher data"></div>'}
-function personChips(sel,attr,multi,extra){return '<div class="chips">'+nomes().map(n=>'<button type="button" class="chip" '+attr+'="'+esc(n)+'" aria-pressed="'+(multi?sel.includes(n):sel===n)+'">'+esc(n)+'</button>').join("")+(extra||"")+'</div>'}
+function personChips(sel,attr,multi,extra){const vis=botoesPessoas();const isSel=n=>multi?sel.includes(n):sel===n;const all=nomes();const show=S.verTodas?all:all.filter(n=>vis.includes(n)||isSel(n));const escondidos=all.length-show.length;
+  return '<div class="chips">'+show.map(n=>'<button type="button" class="chip" '+attr+'="'+esc(n)+'" aria-pressed="'+isSel(n)+'">'+esc(n)+'</button>').join("")+(escondidos>0?'<button type="button" class="chip dashed" data-vertodas="1">+ '+escondidos+'</button>':"")+(extra||"")+'</div>'}
 
 /* ---------- LANÇAR ---------- */
 function lastMeio(){const l=lsGet("lastMeio","");if(l&&meioByKey(l))return l;const ms=cfg().meios;const eu=S.eu;const mine=ms.find(m=>m.titular===eu&&m.tipo==="Cartão");return (mine||ms[0]||MANUAL).chave}
@@ -488,7 +503,8 @@ function viewLancar(v){
   vs.forEach(x=>{html+='<button type="button" class="chip" data-rviagem="'+esc(x.id)+'" aria-pressed="'+(f.rateioModo==="viagem"&&f.viagemId===x.id)+'">Viagem '+esc(x.nome)+' <span class="sub">'+(x.pessoas||[]).length+' pessoas</span></button>'});
   html+='<button type="button" class="chip" data-rmodo="titular" aria-pressed="'+(f.rateioModo==="titular")+'">Só '+esc(titular||"titular")+'</button>';
   html+='<button type="button" class="chip dashed" data-rmodo="texto" aria-pressed="'+(f.rateioModo==="texto")+'">Valores…</button></div>';
-  html+='<div class="chips" style="margin-top:2px">'+nomes().map(n=>'<button type="button" class="chip" data-rpessoa="'+esc(n)+'" aria-pressed="'+((f.rateioModo==="pessoas"&&f.pessoas.includes(n))||(f.rateioModo==="texto"&&nomesDoTexto(f.rateioTexto).includes(n)))+'">'+esc(n)+'</button>').join("")+'</div>';
+  {const selN=n=>(f.rateioModo==="pessoas"&&f.pessoas.includes(n))||(f.rateioModo==="texto"&&nomesDoTexto(f.rateioTexto).includes(n));const vis=botoesPessoas();const show=S.verTodas?nomes():nomes().filter(n=>vis.includes(n)||selN(n));const esc2=nomes().length-show.length;
+  html+='<div class="chips" style="margin-top:2px">'+show.map(n=>'<button type="button" class="chip" data-rpessoa="'+esc(n)+'" aria-pressed="'+selN(n)+'">'+esc(n)+'</button>').join("")+(esc2>0?'<button type="button" class="chip dashed" data-vertodas="1">+ '+esc2+'</button>':"")+'</div>';}
   if(f.rateioModo==="texto")html+='<input class="text" id="f-rtexto" placeholder="Ex.: Ana 100; Bruno; Carla" value="'+esc(f.rateioTexto)+'" style="margin-top:4px"><div class="muted small">Nome sozinho = parte igual · nome com valor = valor fixo · igual à coluna Rateio da planilha.</div>';
   html+='<div class="preview" id="f-prev"></div></div>';
   html+='<details class="more" id="f-more"'+(S.moreOpen||f.obs||f.categoria||f.data!==today()||f.aproximado?" open":"")+'><summary>Data, categoria e observação</summary><div class="stack">';
@@ -536,7 +552,7 @@ function updLancar(){
   const f=S.form;if(!f)return;const t=totais(f);const sub=$("#f-valor-sub");
   if(sub)sub.textContent=f.parcelas>1?(f.parcelas+"x de "+brl(t.parcela)+" · total "+brl(t.total)):(f.valor?"à vista":"");
   const it=draftItem(f);const re=rateioEfetivo(it);const r=parseRateio(re.txt,it.valor,re.titular);const p=$("#f-prev");
-  if(p){if(!r.ok){p.className="preview err";p.textContent="Rateio: "+r.erro}else{p.className="preview";p.innerHTML=(re.origem!=="compra"&&f.rateioModo==="padrao"?'<span class="muted">'+esc(re.origem[0].toUpperCase()+re.origem.slice(1))+': </span>':"")+"<b>"+esc(partsText(r))+"</b>"}}
+  if(p){if(!r.ok){p.className="preview err";p.innerHTML=erroRateioHtml(r.erro)}else{p.className="preview";p.innerHTML=(re.origem!=="compra"&&f.rateioModo==="padrao"?'<span class="muted">'+esc(re.origem[0].toUpperCase()+re.origem.slice(1))+': </span>':"")+"<b>"+esc(partsText(r))+"</b>"}}
   const btn=$("#f-save");if(btn){btn.textContent=(f.id?"Salvar alteração":"Salvar")+(t.total?" · "+brl(t.total):"");}
 }
 function salvarCompra(){
@@ -569,7 +585,7 @@ const icoCar='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 function avisoLocal(){if(S.mode!=="local")return "";
   if(S.storageOk===false)return '<div class="banner bad"><div class="grow"><b>Este navegador não está guardando os lançamentos.</b><div class="small">Abra o arquivo pelo Chrome (não pela pré-visualização do app de arquivos). Até lá, salve o arquivo para a planilha antes de fechar.</div></div></div>';
   const ub=lsGet("ultimoBackup","");const pe=pendentesEnvio();const velho=!ub||idadeDias(ub)>7;
-  if(pe>=10&&velho)return '<div class="banner warn"><div class="grow"><b>'+pe+' lançamentos só neste celular.</b><div class="small">Se o navegador apagar os dados, eles se perdem. Salve o arquivo para a planilha ou um backup.</div></div><a class="chip" href="#planilha" data-go="planilha">Salvar</a></div>';
+  if(pe>=10&&velho)return '<div class="banner warn"><div class="grow"><b>'+pe+' lançamentos só neste celular.</b><div class="small">Se o navegador apagar os dados, eles se perdem. Salve o arquivo para a planilha ou um backup.</div></div><a class="chip" href="#config" data-go="config">Salvar</a></div>';
   return ""}
 function whoBanner(){return '<div class="banner warn"><div class="grow"><b>Quem usa este aparelho?</b><div class="small" style="margin:2px 0 8px">Serve para mostrar quem te deve e preencher quem recebeu.</div>'+personChips("","data-who",false)+'</div></div>'}
 function bindWho(v){v.querySelectorAll("[data-who]").forEach(b=>b.onclick=()=>{S.eu=b.dataset.who;lsSet("eu",S.eu);if(S.form&&!S.form.id)S.form=novaCompra();if(S.pform&&!S.pform.id)S.pform.recebedor=S.eu;render();toast("Este aparelho é de "+S.eu)})}
@@ -624,7 +640,7 @@ function salvarPag(){
 function viewSaldos(v){
   if(S.saldoSel){viewParDetalhe(v);return}
   const ps=paresView();const eu=S.eu;let html='<div class="stack">';
-  if(!S.plan)html+='<div class="card empty"><h3>Ainda sem dados da planilha</h3><p>Na planilha, clique em <b>Exportar para o celular</b> e depois escolha o arquivo em <a href="#planilha" data-go="planilha">Planilha</a>. Os pagamentos registrados aqui já aparecem abaixo.</p></div>';
+  if(!S.plan)html+='<div class="card empty"><h3>Ainda sem dados da planilha</h3><p>Escolha o arquivo resumo-celular.json em <a href="#config" data-go="config">Configurações</a>. Os pagamentos registrados aqui já aparecem abaixo.</p></div>';
   else html+='<div class="muted small" style="margin:-4px 2px 0">Planilha de <b>'+esc(dtBR(S.plan.geradoEm))+'</b>'+(idadeDias(S.plan.geradoEm)>3?' <span class="pill warn">desatualizada</span>':"")+' · pagamentos e compras do celular já descontados</div>';
   const grupo=(titulo,arr)=>{if(!arr.length)return "";return '<div class="section-title">'+esc(titulo)+'</div>'+arr.map(parCard).join("")};
   const ativos=ps.filter(p=>p.agora>0||p.avC>0||p.estC>0||p.pagCel>0);const zerados=ps.filter(p=>!ativos.includes(p));
@@ -773,7 +789,7 @@ function viewViagemForm(v){
   updViagem();
 }
 function updViagem(){const f=S.vform;const r=parseRateio(rateioViagem(f),0,"");const p=$("#fv-prev");
-  if(p){if(!rateioViagem(f)){p.className="preview err";p.textContent="Escolha quem foi."}else if(!r.ok){p.className="preview err";p.textContent="Rateio: "+r.erro}else{const n=r.parts.length;p.className="preview";p.innerHTML="<b>"+esc(rateioViagem(f))+"</b>"+(r.fixos?"":' <span class="muted">· '+n+' partes iguais</span>')}}
+  if(p){if(!rateioViagem(f)){p.className="preview err";p.textContent="Escolha quem foi."}else if(!r.ok){p.className="preview err";p.innerHTML=erroRateioHtml(r.erro)}else{const n=r.parts.length;p.className="preview";p.innerHTML="<b>"+esc(rateioViagem(f))+"</b>"+(r.fixos?"":' <span class="muted">· '+n+' partes iguais</span>')}}
   const rs=$("#fv-resumo");if(rs){const per=f.modo==="datas"?(f.datas.length?"Nos dias "+f.datas.slice().sort().map(dm).join(", "):"Escolha as datas"):("De "+dmy(f.de)+(f.ate?" até "+dmy(f.ate):" em diante, até você encerrar"));
     rs.innerHTML='<div class="grow small">'+esc(per)+', <b>'+esc(f.categorias.join(" e ").toLowerCase()||"nenhuma categoria")+'</b> em '+esc(f.meios.length?f.meios.map(k=>(meioByKey(k)||{nome:k}).nome).join(", "):"qualquer cartão ou débito")+' vão para <b>'+esc(rateioViagem(f)||"…")+'</b>. Compras com rateio próprio continuam com o delas.</div>'}}
 function salvarViagem(){
@@ -810,6 +826,11 @@ function viewHistorico(v){
 function viewPlanilha(v){
   const pe=pendentesEnvio();const total=Object.keys(S.items).length;const n=Object.keys(S.outbox).length;
   let html='<div class="stack">';
+  {const todos=pessoasTodas();const vis=botoesPessoas();const novas=pessoasNovas();
+  html+='<div class="section-title">Pessoas nos botões</div><div class="card stack"><div class="muted small">Marque quem aparece como botão em Dividir entre, Viagens e Pagamento. Os outros ficam no botão "+".</div><div class="chips">'+todos.map(p=>'<button type="button" class="chip" data-botao="'+esc(p.nome)+'" aria-pressed="'+vis.includes(p.nome)+'">'+esc(p.nome)+(novas.includes(p.nome)?' <span class="sub">novo</span>':"")+(p.extra?' <span class="sub">só no celular</span>':"")+'</button>').join("")+'</div>';
+  html+='<div style="display:flex;gap:8px"><input class="text" id="nova-pessoa" placeholder="Nova pessoa (ex.: Carla)" maxlength="40"><button type="button" class="btn" data-act="add-pessoa">Adicionar</button></div>';
+  const extras=todos.filter(p=>p.extra);if(extras.length)html+='<div class="muted small">Pessoas criadas no celular vão no arquivo para a planilha, que pergunta antes de pôr no cadastro. '+extras.map(p=>'<button type="button" class="chip" style="min-height:30px;padding:3px 10px;margin:2px" data-rmpessoa="'+esc(p.nome)+'">Remover '+esc(p.nome)+'</button>').join("")+'</div>';
+  html+='</div>';}
   html+='<div class="section-title">Enviar para a planilha</div><div class="card stack"><div><b>'+(pe?pe+(pe===1?" alteração":" alterações")+" desde o último envio":"Tudo enviado")+'</b><div class="muted small">'+(S.app.ultimoEnvio?"Último envio: "+esc(dtBR(S.app.ultimoEnvio))+(S.app.ultimoEnvioPor?" por "+esc(S.app.ultimoEnvioPor):""):"Nenhum envio ainda")+' · '+total+' itens no total</div></div>';
   html+='<button type="button" class="btn primary" data-act="csv">'+(S.dl?"Baixar arquivo para a planilha":"Salvar arquivo para a planilha")+'</button><button type="button" class="btn" data-act="csv-txt" style="min-height:40px;font-size:14px">Mostrar o arquivo para copiar</button>';
   html+='<div class="muted small">O arquivo <span class="mono">'+esc(nomeCSV())+'</span> leva tudo o que foi lançado '+(S.mode==="compartilhado"?"em todos os aparelhos":"neste aparelho")+'. Salve na pasta <b>Celular</b> do projeto (ou deixe em Downloads) e clique em <b>Importar faturas e extratos</b> na planilha.</div><div id="csv-box"></div></div>';
@@ -824,6 +845,10 @@ function viewPlanilha(v){
   html+='<details class="more card help"><summary>Como funciona</summary><ol><li><b>No dia a dia</b>, lance cada compra na hora: valor, cartão, o que foi e com quem dividir.</li><li><b>Quando chegar a fatura</b>, baixe o arquivo daqui e importe na planilha. Ela liga cada compra à linha da fatura pelo cartão, valor e data (até 5 dias de diferença) e usa a sua descrição e o seu rateio só naquela compra.</li><li><b>Pagamentos</b> viram linhas em Pagamentos. Quando o PIX aparecer no extrato, a planilha reconhece que já está registrado.</li><li><b>Viagens</b> dividem combustível, estacionamento e pedágio do período entre quem foi.</li><li><b>Depois de importar</b>, exporte o resumo da planilha e escolha aqui. O Histórico mostra o que foi achado na fatura, o que ficou em dúvida e o que não apareceu.</li></ol></details>';
   html+='</div>';v.innerHTML=html;
   bindWho(v);
+  v.querySelectorAll("[data-botao]").forEach(b=>b.onclick=()=>{const n=b.dataset.botao;const vis=lsGet("botoesPessoas",[]);const i=vis.indexOf(n);if(i>=0)vis.splice(i,1);else vis.push(n);lsSet("botoesPessoas",vis);const k=lsGet("pessoasConhecidas",[]);if(!k.includes(n)){k.push(n);lsSet("pessoasConhecidas",k)}render()});
+  v.querySelector('[data-act="add-pessoa"]').onclick=()=>{const x=$("#nova-pessoa");if(addPessoa(x.value))render()};
+  $("#nova-pessoa").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();if(addPessoa(e.target.value))render()}});
+  v.querySelectorAll("[data-rmpessoa]").forEach(b=>b.onclick=()=>{const n=b.dataset.rmpessoa;lsSet("pessoasExtras",lsGet("pessoasExtras",[]).filter(x=>x!==n));lsSet("botoesPessoas",lsGet("botoesPessoas",[]).filter(x=>x!==n));toast(n+" removida");render()});
   v.querySelector('[data-act="csv"]')?.addEventListener("click",exportarCSV);
   v.querySelector('[data-act="csv-txt"]')?.addEventListener("click",()=>{$("#csv-box").innerHTML='<textarea class="text mono" rows="8" readonly>'+esc(gerarCSV())+'</textarea><button type="button" class="btn" style="margin-top:8px" data-act="csv-copy">Copiar</button><div class="muted small" style="margin-top:6px">Depois de colar num arquivo controle-celular.csv, toque em Marcar como enviado.</div><button type="button" class="btn" style="margin-top:8px" data-act="csv-mark">Marcar como enviado</button>';$('[data-act="csv-copy"]').onclick=()=>copiar(gerarCSV(),"Arquivo copiado");$('[data-act="csv-mark"]').onclick=()=>marcarEnviado()});
   v.querySelector('[data-act="flush"]')?.addEventListener("click",flush);
@@ -842,6 +867,7 @@ function gerarCSV(){
     else if(i.kind==="pagamento")Object.assign(r,{Data:i.data,Valor:brNum(i.valor),Pagador:i.pagador,Recebedor:i.recebedor,Observacao:i.obs});
     else Object.assign(r,{Nome:i.nome,Rateio:i.rateio,Pessoas:(i.pessoas||[]).join("|"),Modo:i.modo==="datas"?"Datas":"Periodo",De:i.de,Ate:i.ate,Datas:(i.datas||[]).join("|"),Categorias:(i.categorias||[]).join("|"),Meios:(i.meios||[]).map(k=>{const m=meioByKey(k);return m?[m.tipo,m.banco,m.titular,m.final].join(":"):k}).join("|")});
     rows.push(CSV_COLS.map(c=>csvCell(r[c])).join(";"))}
+  pessoasTodas().filter(p=>p.extra).forEach(p=>{const r={Tipo:"Pessoa",ID:"N-"+slug(p.nome),Nome:p.nome,Por:S.eu||""};rows.push(CSV_COLS.map(c=>csvCell(r[c])).join(";"))});
   return "﻿"+rows.join("\r\n")+"\r\n";
 }
 function nomeCSV(){return S.mode==="compartilhado"||S.mode==="offline"?"controle-celular.csv":"controle-celular-"+(slug(S.eu)||"aparelho")+"-"+deviceTag()+".csv"}
