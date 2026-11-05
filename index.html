@@ -96,6 +96,13 @@ input.text:focus,select.text:focus,textarea.text:focus{border-color:var(--accent
 .money-line input{flex:1;min-width:0;border:0;background:transparent;font-family:var(--f-display);font-weight:800;font-size:44px;letter-spacing:-.02em;padding:0;font-variant-numeric:tabular-nums}
 .money-line input:focus{outline:none}
 .money.zero .money-line input{color:var(--ink-2)}
+.money-line .soma-btn{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);color:var(--ink);font-size:24px;font-weight:700;line-height:1;align-self:center;display:grid;place-items:center}
+.money-line .soma-btn+.soma-btn{margin-left:-2px}
+.soma-lista{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:4px 0 2px;font-size:14px}
+.soma-item{border:1px solid var(--line);background:var(--surface-2);border-radius:99px;padding:3px 9px;font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+.soma-item span{color:var(--ink-2);margin-left:2px}
+.soma-mais{color:var(--ink-2);font-weight:700}
+.soma-tot{font-weight:800;margin-left:2px;font-variant-numeric:tabular-nums}
 .money-sub{font-size:13px;color:var(--ink-2);min-height:19px}
 
 /* chips */
@@ -496,8 +503,8 @@ function personChips(sel,attr,multi,extra){const vis=botoesPessoas();const isSel
 
 /* ---------- LANÇAR ---------- */
 function lastMeio(){const l=lsGet("lastMeio","");if(l&&meioByKey(l))return l;const ms=cfg().meios;const eu=S.eu;const mine=ms.find(m=>m.titular===eu&&m.tipo==="Cartão");return (mine||ms[0]||MANUAL).chave}
-function novaCompra(){return {id:null,valor:0,valorEh:"total",parcelas:1,descricao:"",loja:"",meio:lastMeio(),pagoPor:S.eu||nomes()[0],rateioModo:"padrao",pessoas:[],rateioTexto:"",viagemId:"",categoria:"",data:today(),obs:"",aproximado:false}}
-function formFromItem(it){return {id:it.id,valor:it.valorDigitado==="parcela"?it.valorParcela:it.valor,valorEh:it.valorDigitado||"total",parcelas:it.parcelas||1,descricao:it.descricao||"",loja:it.loja||"",meio:it.meio,pagoPor:it.pagoPor||S.eu,rateioModo:it.rateioModo||(it.rateio?(it.rateio==="-"?"titular":"texto"):"padrao"),pessoas:it.rateioModo==="pessoas"?(it.pessoas||[]):[],rateioTexto:it.rateioModo==="texto"?it.rateio:"",viagemId:it.viagem||"",categoria:it.categoria||"",data:it.data,obs:it.obs||"",aproximado:!!it.aproximado}}
+function novaCompra(){return {id:null,valor:0,soma:[],somaAtual:0,valorEh:"total",parcelas:1,descricao:"",loja:"",meio:lastMeio(),pagoPor:S.eu||nomes()[0],rateioModo:"padrao",pessoas:[],rateioTexto:"",viagemId:"",categoria:"",data:today(),obs:"",aproximado:false}}
+function formFromItem(it){return {soma:[],somaAtual:0,id:it.id,valor:it.valorDigitado==="parcela"?it.valorParcela:it.valor,valorEh:it.valorDigitado||"total",parcelas:it.parcelas||1,descricao:it.descricao||"",loja:it.loja||"",meio:it.meio,pagoPor:it.pagoPor||S.eu,rateioModo:it.rateioModo||(it.rateio?(it.rateio==="-"?"titular":"texto"):"padrao"),pessoas:it.rateioModo==="pessoas"?(it.pessoas||[]):[],rateioTexto:it.rateioModo==="texto"?it.rateio:"",viagemId:it.viagem||"",categoria:it.categoria||"",data:it.data,obs:it.obs||"",aproximado:!!it.aproximado}}
 function totais(f){const n=Math.max(1,f.parcelas|0);if(f.valorEh==="parcela"||n===1){const p=f.valor;return {total:p*n,parcela:p}}return {total:f.valor,parcela:Math.round(f.valor/n)}}
 function rateioDoForm(f){
   if(f.rateioModo==="titular")return "-";
@@ -527,7 +534,10 @@ function viewLancar(v){
   html+=avisoLocal();
   if(f.id)html+='<div class="banner"><div class="grow">Editando a compra de <b>'+esc(dmy(f.data))+'</b>. As mudanças vão para a planilha no próximo envio.</div></div>';
   const vHoje=viagensAtivas(today(),null);if(!f.id&&vHoje.length)html+='<div class="banner good"><div class="grow"><b>'+esc(vHoje.map(x=>x.nome).join(", "))+'</b> ativa: '+esc((vHoje[0].categorias||[]).join(" e ").toLowerCase())+' da fatura vão para '+esc(vHoje[0].rateio)+'.</div></div>';
-  html+=moneyInput("f-valor",f.valor,f.parcelas>1&&f.valorEh==="parcela"?"Valor de cada parcela":"Valor da compra",f.parcelas>1?'<div class="seg" style="width:auto" role="group" aria-label="O valor digitado é"><button type="button" data-valoreh="total" aria-pressed="'+(f.valorEh==="total")+'">Total</button><button type="button" data-valoreh="parcela" aria-pressed="'+(f.valorEh==="parcela")+'">Parcela</button></div>':"");
+  {const em=(f.soma||[]).length>0;const somaTot=(f.soma||[]).reduce((a,b)=>a+b,0)+(f.somaAtual||0);
+  html+=moneyInput("f-valor",em?f.somaAtual:f.valor,em?"Próximo valor":(f.parcelas>1&&f.valorEh==="parcela"?"Valor de cada parcela":"Valor da compra"),f.parcelas>1?'<div class="seg" style="width:auto" role="group" aria-label="O valor digitado é"><button type="button" data-valoreh="total" aria-pressed="'+(f.valorEh==="total")+'">Total</button><button type="button" data-valoreh="parcela" aria-pressed="'+(f.valorEh==="parcela")+'">Parcela</button></div>':"");
+  html=html.replace(/(<input id="f-valor"[^>]*>)/,'$1<button type="button" class="soma-btn" data-soma="add" aria-label="Somar mais um valor">+</button>'+(em?'<button type="button" class="soma-btn" data-soma="fim" aria-label="Fechar a soma">=</button>':""));
+  if(em)html=html.replace('<div class="money-sub" id="f-valor-sub">','<div class="soma-lista">'+f.soma.map((c,k)=>'<button type="button" class="soma-item" data-somarm="'+k+'" aria-label="Tirar '+fmt(c)+'">'+fmt(c)+' <span aria-hidden="true">×</span></button>').join('<span class="soma-mais">+</span>')+'<span class="soma-tot" id="f-soma-tot">= '+brl(somaTot)+'</span></div><div class="money-sub" id="f-valor-sub">');}
   html+='<div class="field"><label class="label" for="f-desc">O que foi <span class="hint muted">aparece na planilha</span></label><input class="text" id="f-desc" placeholder="Ex.: jantar de aniversário, farmácia" value="'+esc(f.descricao)+'" maxlength="120"><div id="f-sug"></div></div>';
   html+='<div class="field"><span class="label">Pago com</span><div class="chips scroll" role="group" aria-label="Pago com">'+ordered.map(x=>'<button type="button" class="chip" data-meio="'+esc(x.chave)+'" aria-pressed="'+(x.chave===f.meio)+'">'+bankDot(x)+esc(x.nome)+'</button>').join("")+'<button type="button" class="chip" data-meio="manual" aria-pressed="'+(f.meio==="manual")+'">'+bankDot(MANUAL)+'Dinheiro ou outra conta</button></div>';
   if(f.meio==="manual")html+='<div class="field" style="margin-top:6px"><span class="label">Quem pagou <span class="hint muted">vai para Gastos manuais</span></span>'+personChips(f.pagoPor,"data-pagopor",false)+'</div>';
@@ -557,7 +567,13 @@ function viewLancar(v){
   html+='<div class="savebar"><button class="btn primary" id="f-save" type="submit">Salvar</button></div></form>';
   html+=listaRecentes("compra");
   v.innerHTML=html;
-  bindMoney("f-valor",()=>f.valor,c=>{f.valor=c},updLancar);
+  bindMoney("f-valor",()=>(f.soma||[]).length?f.somaAtual:f.valor,c=>{if((f.soma||[]).length){f.somaAtual=c;f.valor=f.soma.reduce((a,b)=>a+b,0)+c}else f.valor=c},()=>{const st=$("#f-soma-tot");if(st)st.textContent="= "+brl(f.valor);updLancar()});
+  v.querySelectorAll("[data-soma],[data-somarm]").forEach(b=>b.addEventListener("pointerdown",e=>e.preventDefault()));
+  v.querySelectorAll("[data-soma]").forEach(b=>b.onclick=()=>{f.soma=f.soma||[];const em=f.soma.length>0;
+    if(b.dataset.soma==="add"){const cur=em?f.somaAtual:f.valor;if(!cur){toast("Digite um valor e toque em + para somar o próximo.");$("#f-valor").focus();return}f.soma.push(cur);f.somaAtual=0;f.valor=f.soma.reduce((a,c)=>a+c,0)}
+    else{f.valor=f.soma.reduce((a,c)=>a+c,0)+(f.somaAtual||0);f.soma=[];f.somaAtual=0}
+    render();const el=$("#f-valor");if(el&&b.dataset.soma==="add")el.focus()});
+  v.querySelectorAll("[data-somarm]").forEach(b=>b.onclick=()=>{f.soma.splice(+b.dataset.somarm,1);if(!f.soma.length){f.valor=f.somaAtual||0;f.somaAtual=0}else f.valor=f.soma.reduce((a,c)=>a+c,0)+(f.somaAtual||0);render()});
   $("#f-more").addEventListener("toggle",e=>{S.moreOpen=e.target.open});
   const desc=$("#f-desc");desc.addEventListener("input",()=>{f.descricao=desc.value;f.loja="";const l=lojaByNome(desc.value);if(l)f.loja=l.nome;renderSug();updLancar()});
   desc.addEventListener("focus",renderSug);
