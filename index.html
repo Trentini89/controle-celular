@@ -126,6 +126,7 @@ input.text:focus,select.text:focus,textarea.text:focus{border-color:var(--accent
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 
 .preview{font-size:13.5px;border-radius:var(--r-sm);padding:9px 11px;background:var(--surface-2);color:var(--ink)}
+.rat-err{color:var(--bad);font-weight:600}
 .preview.err{background:var(--bad-soft);color:var(--bad)}
 .preview b{font-weight:700}
 
@@ -322,6 +323,7 @@ function resolveNome(tok){const n=norm(tok);const ps=nomes();const ex=ps.find(p=
 function parseRateio(txt,total,titular){
   const t=String(txt||"").trim();
   if(!t)return {padrao:true};
+  if(t==="-"&&/[;,]/.test(titular||""))return parseRateio(titular,total,"");
   if(t==="-")return titular?{ok:true,parts:[{nome:titular,c:total}]}:{ok:false,erro:"sem titular"};
   const sep=t.includes(";")?";":",";
   const toks=t.split(sep).map(s=>s.trim()).filter(Boolean);
@@ -345,6 +347,13 @@ function alternaNomeNoTexto(t,nome){t=String(t||"").trim();const toks=t?t.split(
   const has=toks.filter(tk=>{const m=tk.match(/^(.+?)\s+(-?[\d.,]+)$/);return resolveNome(m?m[1]:tk)===nome});
   if(has.length)return toks.filter(tk=>!has.includes(tk)).join("; ");return toks.concat([nome]).join("; ")}
 function erroRateioHtml(erro){const m=/^nome desconhecido: (.+)$/.exec(erro);const n=m?m[1].trim():"";return esc("Rateio: "+erro)+(n.length>=2&&!/\d/.test(n)?' <button type="button" class="chip" style="margin-left:6px;min-height:30px;padding:4px 10px" data-addpessoa="'+esc(n)+'">Adicionar '+esc(capital(n))+'</button>':"")}
+function nomeTit(t){const ns=/[;,]/.test(t||"")?nomesDoTexto(t):[];return ns.length?ns.join(" e "):(t||"")}
+function pagadoresDe(titular,total){if(!titular)return [];if(!/[;,]/.test(titular))return [{nome:titular,c:total}];const r=parseRateio(titular,total,"");return r.ok&&!r.semValor?r.parts:[]}
+/* dívidas de uma compra: cada um deve a cada pagador a parte proporcional do que ele pagou; ida e volta na mesma compra se anulam */
+function dividasDaCompra(c,re,r){const total=+c.valor||0;const pg=pagadoresDe(re.titular,total);const out={};if(!total||!pg.length)return out;
+  for(const p of r.parts){if(p.c<=0)continue;for(const q of pg){if(q.nome===p.nome||q.c<=0)continue;const k=p.nome+"|"+q.nome;out[k]=(out[k]||0)+p.c*q.c/total}}
+  for(const k of Object.keys(out)){const [a,b]=k.split("|");const kk=b+"|"+a;if(out[kk]!=null&&out[k]!=null){const d=out[k]-out[kk];if(d>=0){out[k]=d;delete out[kk]}else{out[kk]=-d;delete out[k]}}}
+  for(const k of Object.keys(out)){out[k]=Math.round(out[k]);if(out[k]<=0)delete out[k]}return out}
 function partsText(r){if(!r||!r.ok)return "";if(r.semValor)return r.parts.map(p=>p.nome).join(" · ")+(r.fixos?"":" · partes iguais");return r.parts.map(p=>p.nome+" "+fmt(p.c)).join(" · ")}
 function viagensAtivas(data,meioKey){return itemsArr("viagem").filter(v=>{const okData=v.modo==="datas"?(v.datas||[]).includes(data):(data>=v.de&&(!v.ate||data<=v.ate));const okMeio=meioKey==null||!v.meios||!v.meios.length||v.meios.includes(meioKey);return okData&&okMeio})}
 function lojaByNome(n){const k=norm(n);if(!k)return null;return cfg().lojas.find(l=>norm(l.nome)===k)||null}
@@ -380,7 +389,7 @@ function estimativasCelular(){
   const map={};
   for(const c of comprasAguardando()){
     const re=rateioEfetivo(c);const r=parseRateio(re.txt,c.valor,re.titular);if(!r.ok||r.semValor)continue;
-    for(const p of r.parts){if(p.nome===re.titular||!re.titular||p.c<=0)continue;const k=p.nome+"|"+re.titular;(map[k]=map[k]||{c:0,itens:[]});map[k].c+=p.c;map[k].itens.push({it:c,c:p.c})}
+    const dv=dividasDaCompra(c,re,r);for(const k in dv){(map[k]=map[k]||{c:0,itens:[]});map[k].c+=dv[k];map[k].itens.push({it:c,c:dv[k]})}
   }
   return map;
 }
@@ -540,7 +549,7 @@ function viewLancar(v){
   if(em)html=html.replace('<div class="money-sub" id="f-valor-sub">','<div class="soma-lista">'+f.soma.map((c,k)=>'<button type="button" class="soma-item" data-somarm="'+k+'" aria-label="Tirar '+fmt(c)+'">'+fmt(c)+' <span aria-hidden="true">×</span></button>').join('<span class="soma-mais">+</span>')+'<span class="soma-tot" id="f-soma-tot">= '+brl(somaTot)+'</span></div><div class="money-sub" id="f-valor-sub">');}
   html+='<div class="field"><label class="label" for="f-desc">O que foi <span class="hint muted">aparece na planilha</span></label><input class="text" id="f-desc" placeholder="Ex.: jantar de aniversário, farmácia" value="'+esc(f.descricao)+'" maxlength="120"><div id="f-sug"></div></div>';
   html+='<div class="field"><span class="label">Pago com</span><div class="chips scroll" role="group" aria-label="Pago com">'+ordered.map(x=>'<button type="button" class="chip" data-meio="'+esc(x.chave)+'" aria-pressed="'+(x.chave===f.meio)+'">'+bankDot(x)+esc(x.nome)+'</button>').join("")+'<button type="button" class="chip" data-meio="manual" aria-pressed="'+(f.meio==="manual")+'">'+bankDot(MANUAL)+'Dinheiro ou outra conta</button></div>';
-  if(f.meio==="manual")html+='<div class="field" style="margin-top:6px"><span class="label">Quem pagou <span class="hint muted">vai para Gastos manuais</span></span>'+personChips(f.pagoPor,"data-pagopor",false)+'</div>';
+  if(f.meio==="manual")html+='<div class="field" style="margin-top:6px"><span class="label">Quem pagou <span class="hint muted">vai para Gastos manuais</span></span>'+personChips(nomesDoTexto(f.pagoPor),"data-pagopor",true,'<button type="button" class="chip dashed" data-pagoval="1" aria-pressed="'+(!!S.pagoValores||/\d/.test(f.pagoPor||""))+'">Valores…</button>')+((S.pagoValores||/\d/.test(f.pagoPor||""))?'<input class="text" id="f-pagotexto" placeholder="Ex.: Ana 80; Bruno 40" value="'+esc(f.pagoPor)+'" style="margin-top:4px">':'')+'<div class="small muted" id="f-pagoprev" style="margin-top:4px"></div></div>';
   html+='</div>';
   html+='<div class="field"><span class="label">Parcelas</span><div class="chips scroll" role="group" aria-label="Parcelas">';
   for(let n=1;n<=12;n++)html+='<button type="button" class="chip" data-parc="'+n+'" aria-pressed="'+(f.parcelas===n)+'">'+(n===1?"À vista":n+"x")+'</button>';
@@ -549,8 +558,8 @@ function viewLancar(v){
     html+='<div class="tripbox'+(dentro?' on':'')+'"><span class="ico via">'+icoCar+'</span><div class="grow" style="min-width:0"><div class="t">Viagem '+esc(x.nome)+'</div><div class="s">'+(dentro?'Dividido entre '+esc((x.pessoas||[]).join(", ")):auto?esc(cat)+' já entra na viagem sozinho':esc(periodoTxt(x))+' · '+(x.pessoas||[]).length+' pessoas')+'</div></div>'+(auto?'':'<button type="button" class="chip" data-rviagem="'+esc(x.id)+'" aria-pressed="'+dentro+'">'+(dentro?'Na viagem':'Incluir na viagem')+'</button>')+'</div>'});
   if(f.rateioModo==="viagem"){html+='<div class="field"><span class="label">Dividir entre</span><div class="muted small">Pela viagem. Para dividir de outro jeito, toque em "Na viagem" para tirar.</div>'}else{
   html+='<div class="field"><span class="label">Dividir entre</span><div class="chips">';
-  html+='<button type="button" class="chip" data-rmodo="padrao" aria-pressed="'+(f.rateioModo==="padrao")+'">Padrão <span class="sub">'+esc(padrao.txt==="-"?"só "+(titular||"titular"):padrao.txt)+'</span></button>';
-  html+='<button type="button" class="chip" data-rmodo="titular" aria-pressed="'+(f.rateioModo==="titular")+'">Só '+esc(titular||"titular")+'</button>';
+  html+='<button type="button" class="chip" data-rmodo="padrao" aria-pressed="'+(f.rateioModo==="padrao")+'">Padrão <span class="sub">'+esc(padrao.txt==="-"?"só "+(nomeTit(titular)||"titular"):padrao.txt)+'</span></button>';
+  html+='<button type="button" class="chip" data-rmodo="titular" aria-pressed="'+(f.rateioModo==="titular")+'">Só '+esc(nomeTit(titular)||"titular")+'</button>';
   html+='<button type="button" class="chip dashed" data-rmodo="texto" aria-pressed="'+(f.rateioModo==="texto")+'">Valores…</button></div>';
   {const selN=n=>(f.rateioModo==="pessoas"&&f.pessoas.includes(n))||(f.rateioModo==="texto"&&nomesDoTexto(f.rateioTexto).includes(n));const vis=botoesPessoas();const show=S.verTodas?nomes():nomes().filter(n=>vis.includes(n)||selN(n));const esc2=nomes().length-show.length;
   html+='<div class="chips" style="margin-top:2px">'+show.map(n=>'<button type="button" class="chip" data-rpessoa="'+esc(n)+'" aria-pressed="'+selN(n)+'">'+esc(n)+'</button>').join("")+(esc2>0?'<button type="button" class="chip dashed" data-vertodas="1">+ '+esc2+'</button>':"")+'</div>';}
@@ -584,7 +593,9 @@ function viewLancar(v){
   $("#f-obs").addEventListener("input",e=>{f.obs=e.target.value});
   $("#f-aprox").addEventListener("change",e=>{f.aproximado=e.target.checked});
   v.querySelectorAll("[data-meio]").forEach(b=>b.onclick=()=>{f.meio=b.dataset.meio;render()});
-  v.querySelectorAll("[data-pagopor]").forEach(b=>b.onclick=()=>{f.pagoPor=b.dataset.pagopor;render()});
+  v.querySelectorAll("[data-pagopor]").forEach(b=>b.onclick=()=>{f.pagoPor=alternaNomeNoTexto(f.pagoPor,b.dataset.pagopor);render()});
+  v.querySelector("[data-pagoval]")?.addEventListener("click",()=>{S.pagoValores=!(S.pagoValores||/\d/.test(f.pagoPor||""));if(!S.pagoValores)f.pagoPor=nomesDoTexto(f.pagoPor).join("; ");render();if(S.pagoValores){const x=$("#f-pagotexto");if(x)x.focus()}});
+  $("#f-pagotexto")?.addEventListener("input",e=>{f.pagoPor=e.target.value;const ns=nomesDoTexto(f.pagoPor);v.querySelectorAll("[data-pagopor]").forEach(b=>b.setAttribute("aria-pressed",ns.includes(b.dataset.pagopor)));updLancar()});
   v.querySelectorAll("[data-parc]").forEach(b=>b.onclick=()=>{f.parcelas=+b.dataset.parc;if(f.parcelas===1)f.valorEh="total";render()});
   v.querySelectorAll("[data-valoreh]").forEach(b=>b.onclick=()=>{f.valorEh=b.dataset.valoreh;render()});
   v.querySelectorAll("[data-rmodo]").forEach(b=>b.onclick=()=>{const antes=f.rateioModo;f.rateioModo=b.dataset.rmodo;if(f.rateioModo==="texto"&&antes!=="texto"){f.rateioTexto=antes==="pessoas"&&f.pessoas.length?f.pessoas.join("; "):antes==="viagem"&&S.items[f.viagemId]?S.items[f.viagemId].rateio:(f.rateioTexto||(padrao.txt==="-"?(titular||""):padrao.txt))}render();if(f.rateioModo==="texto"){const x=$("#f-rtexto");if(x)x.focus()}});
@@ -608,13 +619,15 @@ function updLancar(){
   const f=S.form;if(!f)return;const t=totais(f);const sub=$("#f-valor-sub");
   if(sub)sub.textContent=f.parcelas>1?(f.parcelas+"x de "+brl(t.parcela)+" · total "+brl(t.total)):(f.valor?"à vista":"");
   const it=draftItem(f);const re=rateioEfetivo(it);const r=parseRateio(re.txt,it.valor,re.titular);const p=$("#f-prev");
+  {const pp=$("#f-pagoprev");if(pp){if(f.meio==="manual"&&/[;,]/.test(f.pagoPor||"")){const rp=parseRateio(f.pagoPor,it.valor,"");if(!rp.ok){pp.className="small rat-err";pp.textContent="Quem pagou: "+rp.erro}else{pp.className="small muted";pp.textContent=rp.semValor?"Pagaram juntos, em partes iguais.":"Pagou: "+rp.parts.map(x=>x.nome+" "+fmt(x.c)).join(" · ")}}else pp.textContent=""}}
   if(p){if(!r.ok){p.className="preview err";p.innerHTML=erroRateioHtml(r.erro)}else{p.className="preview";p.innerHTML=(re.origem!=="compra"&&f.rateioModo==="padrao"?'<span class="muted">'+esc(re.origem[0].toUpperCase()+re.origem.slice(1))+': </span>':"")+"<b>"+esc(partsText(r))+"</b>"}}
   const btn=$("#f-save");if(btn){btn.textContent=(f.id?"Salvar alteração":"Salvar")+(t.total?" · "+brl(t.total):"");}
 }
 function salvarCompra(){
   const f=S.form;const it=draftItem(f);
   if(!it.valor){toast("Digite o valor da compra.");$("#f-valor").focus();return}
-  if(f.meio==="manual"&&!f.pagoPor){toast("Escolha quem pagou.");return}
+  if(f.meio==="manual"&&!nomesDoTexto(f.pagoPor).length&&!resolveNome(f.pagoPor||"")){toast("Escolha quem pagou.");return}
+  if(f.meio==="manual"&&/[;,]/.test(f.pagoPor)){const rp=parseRateio(f.pagoPor,it.valor,"");if(!rp.ok){toast("Corrija quem pagou: "+rp.erro);return}}
   if(f.rateioModo==="texto"||f.rateioModo==="pessoas"){const re=rateioEfetivo(it);const r=parseRateio(re.txt,it.valor,re.titular);if(!r.ok){toast("Corrija o rateio: "+r.erro);return}}
   const isNew=!f.id;if(isNew)it.id=newId("C");else{it.criadoEm=S.items[f.id].criadoEm;it.por=S.items[f.id].por}
   lsSet("lastMeio",it.meio);const u=lsGet("meioUso",{});u[it.meio]=(u[it.meio]||0)+1;lsSet("meioUso",u);
@@ -626,7 +639,7 @@ function listaRecentes(kind){
   const arr=itemsArr(kind).sort((a,b)=>(b.criadoEm||"").localeCompare(a.criadoEm||"")).slice(0,5);if(!arr.length)return "";
   return '<div class="section-title" style="margin-top:22px">Últimos lançados</div><div class="card" style="padding:4px 12px;margin-top:10px"><div class="list">'+arr.map(itemRow).join("")+'</div></div>';
 }
-function rateioResumo(it){if(!it.rateio)return "";if(it.viagem&&S.items[it.viagem])return "Viagem "+S.items[it.viagem].nome;if(it.rateio==="-")return "Só "+(it.titular||"titular");const ns=[...new Set(nomesDoTexto(it.rateio))];const val=/\d/.test(it.rateio);return ns.join(", ")+(val?" · valores":"")}
+function rateioResumo(it){if(!it.rateio)return "";if(it.viagem&&S.items[it.viagem])return "Viagem "+S.items[it.viagem].nome;if(it.rateio==="-")return "Só "+(nomeTit(it.titular)||"titular");const ns=[...new Set(nomesDoTexto(it.rateio))];const val=/\d/.test(it.rateio);return ns.join(", ")+(val?" · valores":"")}
 function itemRow(it){
   const st=statusItem(it);
   if(it.kind==="compra"){const m=meioByKey(it.meio)||MANUAL;return '<button type="button" class="item" data-edit="'+esc(it.id)+'"><span class="ico">'+icoCard+'</span><span style="min-width:0"><div class="t">'+esc(it.descricao||it.loja||"(sem descrição)")+'</div><div class="s">'+bankDot(m)+esc(m.nome)+(it.parcelas>1?" · "+it.parcelas+"x":"")+' · '+dm(it.data)+(rateioResumo(it)?' <span class="pill rat" title="Rateio">÷ '+esc(rateioResumo(it))+'</span>':"")+' <span class="pill '+st.cls+'">'+esc(st.txt)+'</span></div></span><span class="v">'+brl(it.valor)+'</span></button>'}
